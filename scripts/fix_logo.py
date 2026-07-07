@@ -9,13 +9,13 @@ img = Image.open(logo_path).convert("RGBA")
 print("original size:", img.size)
 
 size = 512
+scale = size / max(img.size)
+new_size = (round(img.width * scale), round(img.height * scale))
+img = img.resize(new_size, Image.LANCZOS)
+print("scaled size:", img.size)
+
 canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-max_dim = max(img.size)
-if max_dim > size:
-    scale = size / max_dim
-    img = img.resize((round(img.width * scale), round(img.height * scale)), Image.LANCZOS)
-    print("resized to:", img.size)
 pos = ((size - img.width) // 2, (size - img.height) // 2)
 canvas.paste(img, pos, img)
 canvas.save(logo_path)
-print("saved squared icon at", logo_path, "size", canvas.size)
+print("saved scaled square icon at", logo_path, "size", canvas.size)
