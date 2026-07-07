@@ -1,0 +1,16 @@
+{
+  "name": "FlowSchedule",
+  "short_name": "FlowSchedule",
+  "description": "A snap-to-grid weekly scheduler for focused work.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/NEWlogo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
