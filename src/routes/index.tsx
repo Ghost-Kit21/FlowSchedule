@@ -599,7 +599,7 @@ function Index() {
       <header className="flex shrink-0 items-center justify-between gap-3 px-4 py-2 sm:px-6">
         <div className="flex min-w-0 items-center gap-2">
           <img
-            src="/logo.png"
+            src="/THELOGO.png"
             alt="FlowSchedule logo"
             className="h-9 w-9 shrink-0 rounded-lg shadow-sm ring-1 ring-black/5 dark:ring-white/10"
           />
@@ -1075,7 +1075,7 @@ function LoadingShell() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50/40 to-indigo-50/30 text-slate-950 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 dark:text-slate-100">
       <div className="flex items-center gap-3">
-        <img src="/logo.png" alt="FlowSchedule logo" className="h-10 w-10 rounded-lg shadow-sm" />
+        <img src="/THELOGO.png" alt="FlowSchedule logo" className="h-10 w-10 rounded-lg shadow-sm" />
         <div>
           <div className="text-sm font-semibold">FlowSchedule</div>
           <div className="text-xs text-slate-500 dark:text-slate-400">Loading</div>
