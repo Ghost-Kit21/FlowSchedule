@@ -216,6 +216,13 @@ function Index() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
   const [hover, setHover] = useState<{ day: number; slot: number } | null>(null);
+  const [creating, setCreating] = useState<
+    | null
+    | { day: number; startSlot: number; currentSlot: number; rectLeft: number }
+    >(
+    null,
+  );
+  const createdDraftRef = useRef<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const clickSuppressRef = useRef(false);
@@ -385,16 +392,23 @@ function Index() {
     return Math.round(min / SLOT_MIN) * SLOT_MIN;
   }
 
-  function openNew(day: number, start: number) {
-    const clampedStart = Math.min(snap(start), totalMinutes - 60);
-    setEditing({
+  function openNew(day: number, start: number, duration?: number, createNow = false) {
+    const dur = typeof duration === "number" ? Math.max(SLOT_MIN, snap(duration)) : SLOT_MIN;
+    const clampedStart = Math.min(snap(start), totalMinutes - dur);
+    console.debug("openNew called", { day, start, duration, dur, createNow });
+    const task: Task = {
       id: uid(),
       title: "",
       day,
       start: Math.max(0, clampedStart),
-      duration: 60,
+      duration: dur,
       color: COLORS[Math.floor(Math.random() * COLORS.length)].value,
-    });
+    };
+    if (createNow) {
+      setTasksForWeek((prev) => [...prev, task]);
+      createdDraftRef.current = task.id;
+    }
+    setEditing(task);
     setDialogOpen(true);
   }
 
@@ -406,7 +420,8 @@ function Index() {
   }
 
   function openEdit(t: Task) {
-    setEditing({ ...t });
+    const latest = (tasksByWeek[weekKey] ?? []).find((x) => x.id === t.id) ?? t;
+    setEditing({ ...latest });
     setDialogOpen(true);
   }
 
@@ -425,6 +440,8 @@ function Index() {
       if (exists) return prev.map((t) => (t.id === editing.id ? editing : t));
       return [...prev, editing];
     });
+    // clear draft tracking if this was the placeholder
+    if (createdDraftRef.current === editing.id) createdDraftRef.current = null;
     setDialogOpen(false);
     setEditing(null);
   }
@@ -432,9 +449,23 @@ function Index() {
   function deleteTask() {
     if (!editing) return;
     setTasksForWeek((prev) => prev.filter((t) => t.id !== editing.id));
+    if (createdDraftRef.current === editing.id) createdDraftRef.current = null;
     setDialogOpen(false);
     setEditing(null);
   }
+
+  useEffect(() => {
+    // If dialog was closed and a draft task exists, remove it
+    if (dialogOpen) return;
+    const draftId = createdDraftRef.current;
+    if (!draftId) return;
+    setTasksForWeek((prev) => prev.filter((t) => t.id !== draftId));
+    createdDraftRef.current = null;
+  }, [dialogOpen]);
+
+  useEffect(() => {
+    if (dialogOpen) console.debug("dialog opened editing", editing);
+  }, [dialogOpen, editing]);
 
   function saveQuickTask() {
     const trimmed = quickTaskDraft.title.trim();
@@ -518,6 +549,12 @@ function Index() {
   }
 
   function handleRowClick(e: React.MouseEvent, day: number) {
+    if (clickSuppressRef.current) {
+      clickSuppressRef.current = false;
+      return;
+    }
+    // if we just created a placeholder from a drag, ignore the click that may follow
+    if (createdDraftRef.current) return;
     if ((e.target as HTMLElement).closest("[data-task]")) return;
     const slot = slotFromEvent(e);
     openNew(day, slot * SLOT_MIN);
@@ -546,6 +583,60 @@ function Index() {
     };
     window.addEventListener("mousemove", onDrag);
     window.addEventListener("mouseup", endDrag);
+  }
+
+  // Create-by-drag handlers
+  const createRef = useRef<
+    | null
+    | { rectLeft: number; rect: DOMRect; startSlot: number; currentSlot: number; day: number; startClientX: number }
+    >(null);
+
+  function handleGridMouseDown(e: React.MouseEvent, day: number) {
+    if ((e.target as HTMLElement).closest("[data-task]")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const target = e.currentTarget as HTMLElement;
+    const rect = target.getBoundingClientRect();
+    const startSlot = slotFromRect(e.clientX, rect);
+    createRef.current = { rectLeft: rect.left, rect, startSlot, currentSlot: startSlot, day, startClientX: e.clientX };
+    setCreating({ day, startSlot, currentSlot: startSlot, rectLeft: rect.left });
+    window.addEventListener("mousemove", onCreateMove);
+    window.addEventListener("mouseup", onCreateEnd);
+  }
+
+  function onCreateMove(e: MouseEvent) {
+    const c = createRef.current;
+    if (!c) return;
+    const slot = slotFromRect(e.clientX, c.rect);
+    c.currentSlot = slot;
+    setCreating((prev) => (prev ? { ...prev, currentSlot: slot } : null));
+  }
+
+  function onCreateEnd(e: MouseEvent) {
+    const c = createRef.current;
+    window.removeEventListener("mousemove", onCreateMove);
+    window.removeEventListener("mouseup", onCreateEnd);
+    createRef.current = null;
+    if (!c) {
+      setCreating(null);
+      return;
+    }
+    // compute float positions so release at a boundary maps to an exclusive end index
+    const startFloat = (c.startClientX - c.rect.left) / SLOT_WIDTH;
+    const endFloat = (e.clientX - c.rect.left) / SLOT_WIDTH;
+    const leftIndex = Math.min(Math.floor(startFloat), Math.floor(endFloat));
+    const rightExclusive = Math.max(Math.ceil(startFloat), Math.ceil(endFloat));
+    const slotCount = Math.max(1, rightExclusive - leftIndex);
+    const duration = slotCount * SLOT_MIN;
+    const leftSlot = leftIndex;
+    console.debug("onCreateEnd computed", { day: c.day, leftSlot, rightExclusive, slotCount, duration });
+    // small delay to suppress click that follows
+    clickSuppressRef.current = true;
+    // allow a short timeout so the following click event is ignored
+    window.setTimeout(() => (clickSuppressRef.current = false), 50);
+    setCreating(null);
+    // create placeholder task immediately so the dialog reflects the dragged duration
+    openNew(c.day, leftSlot * SLOT_MIN, duration, true);
   }
 
   function onDrag(e: MouseEvent) {
@@ -705,6 +796,7 @@ function Index() {
                         </div>
                       </div>
                       <div
+                        onMouseDown={(e) => handleGridMouseDown(e, dayIdx)}
                         onClick={(e) => handleRowClick(e, dayIdx)}
                         onMouseMove={(e) => handleRowMove(e, dayIdx)}
                         onMouseLeave={() => setHover((h) => (h?.day === dayIdx ? null : h))}
@@ -737,6 +829,19 @@ function Index() {
                             style={{ left: hover.slot * SLOT_WIDTH, width: SLOT_WIDTH }}
                           />
                         )}
+
+                        {creating && creating.day === dayIdx && (() => {
+                          const leftSlot = Math.min(creating.startSlot, creating.currentSlot);
+                          const rightSlot = Math.max(creating.startSlot, creating.currentSlot);
+                          const left = leftSlot * SLOT_WIDTH;
+                          const width = (rightSlot - leftSlot + 1) * SLOT_WIDTH;
+                          return (
+                            <div
+                              className="pointer-events-none absolute bottom-0.5 top-0.5 rounded bg-blue-500/25 ring-1 ring-blue-500/50"
+                              style={{ left, width }}
+                            />
+                          );
+                        })()}
 
                         {currentDayMarker?.day === dayIdx && (
                           <div
