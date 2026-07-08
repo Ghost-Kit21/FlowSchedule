@@ -992,7 +992,7 @@ function Index() {
                     <p className="text-xs text-slate-500 dark:text-slate-400">Drag a shortcut onto the schedule.</p>
                   </div>
                   <QuickAction
-                    gradient="from-blue-500 to-blue-600"
+                    gradient="from-slate-600 to-slate-700"
                     icon={<Plus className="h-4 w-4" />}
                     label="Add"
                     className="min-w-[96px] px-3 py-2"
