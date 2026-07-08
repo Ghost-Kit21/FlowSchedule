@@ -85,6 +85,13 @@ type Note = {
   createdAt: string;
 };
 
+type Bookmark = {
+  id: string;
+  title: string;
+  url: string;
+  color: string;
+};
+
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const START_HOUR = 7;
 const END_HOUR = 22;
@@ -112,6 +119,8 @@ const PROFILE_STORAGE_KEY = "flowschedule.profile.v1";
 const PROFILE_NAME_STORAGE_KEY = "flowschedule.profileName.v1";
 const DEFAULT_FOCUS_MINUTES = 25;
 const QUICK_TASK_LIMIT = 5;
+const BOOKMARK_LIMIT = 5;
+const BOOKMARKS_STORAGE_KEY = "flowschedule.bookmarks.v1";
 
 function uid() {
   return Math.random().toString(36).slice(2, 10);
@@ -209,6 +218,10 @@ function Index() {
   const [quickTasksOpen, setQuickTasksOpen] = useState(true);
   const [notes, setNotes] = useState<Note[]>([]);
   const [notesHydrated, setNotesHydrated] = useState(false);
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const [bookmarkDraft, setBookmarkDraft] = useState({ title: "", url: "", color: COLORS[0].value });
+  const [bookmarkEditorOpen, setBookmarkEditorOpen] = useState(false);
+  const [bookmarkEditingId, setBookmarkEditingId] = useState<string | null>(null);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [profileName, setProfileName] = useState<string>("My profile");
   const [now, setNow] = useState(() => new Date());
@@ -319,6 +332,28 @@ function Index() {
     if (!notesHydrated) return;
     localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(notes));
   }, [notes, notesHydrated]);
+
+  useEffect(() => {
+    try {
+      const rawBookmarks = localStorage.getItem(BOOKMARKS_STORAGE_KEY);
+      const parsed = rawBookmarks ? (JSON.parse(rawBookmarks) as Partial<Bookmark>[]) : [];
+      setBookmarks(
+        parsed.map((bookmark) => ({
+          id: bookmark.id ?? uid(),
+          title: bookmark.title ?? "",
+          url: bookmark.url ?? "",
+          color: bookmark.color ?? COLORS[0].value,
+        })),
+      );
+    } catch {
+      localStorage.removeItem(BOOKMARKS_STORAGE_KEY);
+      setBookmarks([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify(bookmarks));
+  }, [bookmarks]);
 
   useEffect(() => {
     try {
@@ -519,6 +554,31 @@ function Index() {
     ]);
   }
 
+  function addBookmark() {
+    const title = bookmarkDraft.title.trim();
+    const url = bookmarkDraft.url.trim();
+    if (!title || !url || bookmarks.length >= BOOKMARK_LIMIT) return;
+    const normalizedUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    if (bookmarkEditingId) {
+      setBookmarks((prev) => prev.map((bookmark) => (bookmark.id === bookmarkEditingId ? { ...bookmark, title, url: normalizedUrl, color: bookmarkDraft.color } : bookmark)));
+    } else {
+      setBookmarks((prev) => [...prev, { id: uid(), title, url: normalizedUrl, color: bookmarkDraft.color }]);
+    }
+    setBookmarkDraft({ title: "", url: "", color: COLORS[0].value });
+    setBookmarkEditingId(null);
+    setBookmarkEditorOpen(false);
+  }
+
+  function removeBookmark(id: string) {
+    setBookmarks((prev) => prev.filter((bookmark) => bookmark.id !== id));
+  }
+
+  function startBookmarkEdit(bookmark: Bookmark) {
+    setBookmarkEditingId(bookmark.id);
+    setBookmarkDraft({ title: bookmark.title, url: bookmark.url, color: bookmark.color });
+    setBookmarkEditorOpen(true);
+  }
+
   function deleteNote(id: string) {
     setNotes((prev) => prev.filter((note) => note.id !== id));
   }
@@ -687,14 +747,14 @@ function Index() {
 
   return (
     <div ref={rootRef} className="flex h-screen flex-col overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/40 to-indigo-50/30 text-slate-950 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 dark:text-slate-100">
-      <header className="flex shrink-0 items-center justify-between gap-3 px-4 py-2 sm:px-6">
+      <header className="flex shrink-0 flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-6 sm:py-2">
         <div className="flex min-w-0 items-center gap-2">
           <img
             src="/THELOGO.png"
             alt="FlowSchedule logo"
-            className="h-9 w-9 shrink-0 rounded-lg shadow-sm ring-1 ring-black/5 dark:ring-white/10"
+            className="h-8 w-8 shrink-0 rounded-lg shadow-sm ring-1 ring-black/5 dark:ring-white/10 sm:h-9 sm:w-9"
           />
-          <h1 className="truncate text-lg font-bold tracking-tight text-slate-950 dark:text-slate-50">
+          <h1 className="truncate text-base font-bold tracking-tight text-slate-950 dark:text-slate-50 sm:text-lg">
             FlowSchedule
           </h1>
         </div>
@@ -708,7 +768,7 @@ function Index() {
         />
       </header>
 
-      <main className="mx-auto grid min-h-0 w-full max-w-full flex-1 gap-3 px-4 pb-0 lg:grid-cols-[260px_1fr_320px]">
+      <main className="mx-auto grid min-h-0 w-full max-w-full flex-1 gap-2 px-2 pb-24 sm:gap-3 sm:px-4 sm:pb-28 lg:grid-cols-[260px_1fr_320px]">
         <aside className="flex min-h-0 flex-col gap-3 overflow-auto">
           <TimeDateCard now={now} />
           <UpcomingTasksCard nowMinutes={nowMinutes} tasks={todaysRemainingTasks} />
@@ -722,9 +782,9 @@ function Index() {
         </aside>
 
         <div className="flex min-h-0 flex-col gap-3 h-full">
-          <section className="flex min-h-0 flex-1 flex-col rounded-lg bg-white/75 p-3 shadow-lg shadow-slate-200/50 ring-1 ring-white backdrop-blur dark:bg-slate-900/75 dark:shadow-black/20 dark:ring-white/10">
+          <section className="flex w-full flex-col overflow-hidden rounded-lg bg-white/75 p-2 shadow-lg shadow-slate-200/50 ring-1 ring-white backdrop-blur dark:bg-slate-900/75 dark:shadow-black/20 dark:ring-white/10 sm:p-3">
             <div className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2">
-              <h2 className="text-lg font-bold text-slate-950 dark:text-slate-50">
+              <h2 className="text-base font-bold text-slate-950 dark:text-slate-50 sm:text-lg">
                 Weekly Schedule
               </h2>
               <div className="flex items-center gap-1.5">
@@ -763,8 +823,8 @@ function Index() {
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-auto">
-              <div style={{ minWidth: LABEL_WIDTH + HOURS.length * HOUR_WIDTH }}>
+            <div className="overflow-x-auto overflow-y-hidden">
+              <div style={{ minWidth: LABEL_WIDTH + HOURS.length * HOUR_WIDTH }} className="min-w-[720px] sm:min-w-[760px]">
                 <div className="sticky top-0 z-10 flex border-b border-slate-200 bg-white/85 pb-1 backdrop-blur dark:border-slate-800 dark:bg-slate-900/85">
                   <div style={{ width: LABEL_WIDTH }} />
                   {HOURS.map((h) => (
@@ -913,75 +973,134 @@ function Index() {
       </main>
 
       {/* Footer Quick Tasks bar */}
-      <footer className="fixed bottom-0 left-0 right-0 z-50 bg-white/85 dark:bg-slate-900/85 border-t border-slate-200 dark:border-slate-800 backdrop-blur">
-        <div className="mx-auto w-full px-4 py-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Target className="h-6 w-6 shrink-0 text-slate-400 dark:text-slate-500" />
-              <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">Quick Tasks</div>
-              <div className="hidden sm:block text-xs text-slate-500 dark:text-slate-400">Drag a shortcut onto the schedule to place it.</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                aria-label="Toggle quick tasks"
-                onClick={() => setQuickTasksOpen((s) => !s)}
-                className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-background text-foreground transition hover:bg-accent"
-              >
-                <ArrowUp className={`h-4 w-4 transform ${quickTasksOpen ? '-rotate-180' : 'rotate-0'}`} />
-              </button>
+      <footer className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
+        <div className="mx-auto w-full px-3 py-2 sm:px-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Target className="h-5 w-5 shrink-0 text-slate-400 dark:text-slate-500 sm:h-6 sm:w-6" />
+              <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">Quick Tasks & Bookmarks</div>
+              <div className="hidden text-xs text-slate-500 dark:text-slate-400 sm:block">Split shortcuts and links, then drop them into your plan.</div>
             </div>
           </div>
 
-          <div className={`mt-2 overflow-hidden transition-all duration-200 ${quickTasksOpen ? 'max-h-96' : 'max-h-0'}`}>
-            <div className="flex items-center gap-3 overflow-x-auto py-1">
-              <QuickAction
-                gradient="from-blue-500 to-blue-600"
-                icon={<Plus className="h-4 w-4" />}
-                label="Add"
-                className="min-w-[140px] px-4"
-                onClick={() => {
-                  setQuickTaskDraft({ title: "", duration: 60, color: COLORS[Math.floor(Math.random() * COLORS.length)].value });
-                  setQuickTaskEditingId(null);
-                  setQuickTaskEditorOpen(true);
-                }}
-              />
-
-              <div className="flex gap-2 px-2 items-center">
-                {quickTasks.map((quickTask) => (
-                  <div
-                    key={quickTask.id}
-                    draggable
-                    onDragStart={(e) => handleQuickTaskDragStart(e, quickTask)}
-                    className={`group flex items-center overflow-hidden rounded-md px-1 text-[12px] font-semibold text-white shadow cursor-grab select-none`}
-                  >
-                    <div
-                      onClick={() => {
-                        // open quick task editor (no day/start shown)
-                        setQuickTaskEditingId(quickTask.id);
-                        setQuickTaskDraft({ title: quickTask.title, duration: quickTask.duration, color: quickTask.color });
-                        setQuickTaskEditorOpen(true);
-                      }}
-                      className={`flex items-center gap-2 rounded-md bg-gradient-to-br ${quickTask.color} px-3 py-2`}
-                      style={{ width: Math.max(quickTask.duration * pxPerMin, 64), minHeight: 32 }}
-                      title={quickTask.title}
-                    >
-                      <span className="truncate">{quickTask.title}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeQuickTask(quickTask.id)}
-                      className="ml-2 rounded-full p-0.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-100"
-                      aria-label={`Remove ${quickTask.title}`}
-                    >
-                      ×
-                    </button>
+          <div className="mt-2 overflow-hidden max-h-[calc(100dvh-15rem)]">
+            <div className="grid gap-3 py-1 md:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Quick Tasks</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Drag a shortcut onto the schedule.</p>
                   </div>
-                ))}
+                  <QuickAction
+                    gradient="from-blue-500 to-blue-600"
+                    icon={<Plus className="h-4 w-4" />}
+                    label="Add"
+                    className="min-w-[96px] px-3 py-2"
+                    onClick={() => {
+                      setQuickTaskDraft({ title: "", duration: 60, color: COLORS[Math.floor(Math.random() * COLORS.length)].value });
+                      setQuickTaskEditingId(null);
+                      setQuickTaskEditorOpen(true);
+                    }}
+                  />
+                </div>
 
-                {quickTasks.length === 0 && (
-                  <div className="ml-4 rounded-md border border-dashed border-slate-200 p-2 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                    Add up to 5 shortcuts, then drag them into any day and time.
+                <div className="flex flex-wrap gap-2">
+                  {quickTasks.map((quickTask) => (
+                    <div
+                      key={quickTask.id}
+                      draggable
+                      onDragStart={(e) => handleQuickTaskDragStart(e, quickTask)}
+                      className="group flex items-center overflow-hidden rounded-md px-1 text-[12px] font-semibold text-white shadow cursor-grab select-none"
+                    >
+                      <div
+                        onClick={() => {
+                          setQuickTaskEditingId(quickTask.id);
+                          setQuickTaskDraft({ title: quickTask.title, duration: quickTask.duration, color: quickTask.color });
+                          setQuickTaskEditorOpen(true);
+                        }}
+                        className={`flex items-center gap-2 rounded-md bg-gradient-to-br ${quickTask.color} px-3 py-2`}
+                        style={{ width: Math.max(quickTask.duration * pxPerMin, 64), minHeight: 32 }}
+                        title={quickTask.title}
+                      >
+                        <span className="truncate">{quickTask.title}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeQuickTask(quickTask.id)}
+                        className="ml-2 rounded-full p-0.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-100"
+                        aria-label={`Remove ${quickTask.title}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+
+                  {quickTasks.length === 0 && (
+                    <div className="rounded-md border border-dashed border-slate-200 p-2 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                      Add up to 5 shortcuts, then drag them into any day and time.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Bookmarks</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Up to 5 important links.</p>
+                  </div>
+                  {bookmarks.length < BOOKMARK_LIMIT && (
+                    <QuickAction
+                      gradient="from-slate-600 to-slate-700"
+                      icon={<Plus className="h-4 w-4" />}
+                      label="Add"
+                      className="min-w-[96px] px-3 py-2"
+                      onClick={() => {
+                        setBookmarkEditingId(null);
+                        setBookmarkDraft({ title: "", url: "", color: COLORS[0].value });
+                        setBookmarkEditorOpen(true);
+                      }}
+                    />
+                  )}
+                </div>
+
+                {bookmarks.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-200 p-3 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                    Save up to 5 useful links here.
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {bookmarks.map((bookmark) => (
+                      <div key={bookmark.id} className="group flex items-center overflow-hidden rounded-md px-1 text-[12px] font-semibold text-white shadow-sm">
+                        <a
+                          href={bookmark.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={`flex items-center gap-2 rounded-md bg-gradient-to-br ${bookmark.color} px-3 py-2`}
+                          title={bookmark.title}
+                        >
+                          <span className="max-w-[140px] truncate">{bookmark.title}</span>
+                        </a>
+                        <div className="ml-2 flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => startBookmarkEdit(bookmark)}
+                            className="rounded-full p-0.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-100"
+                            aria-label={`Edit ${bookmark.title}`}
+                          >
+                            ✎
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeBookmark(bookmark.id)}
+                            className="rounded-full p-0.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-100"
+                            aria-label={`Remove ${bookmark.title}`}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -1107,6 +1226,65 @@ function Index() {
       </Dialog>
 
       {/* Quick Task Editor Dialog (create a shortcut with duration only) */}
+      <Dialog open={bookmarkEditorOpen} onOpenChange={(open) => {
+        setBookmarkEditorOpen(open);
+        if (!open) {
+          setBookmarkEditingId(null);
+          setBookmarkDraft({ title: "", url: "", color: COLORS[0].value });
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{bookmarkEditingId ? "Edit bookmark" : "New bookmark"}</DialogTitle>
+            <DialogDescription>Create a reusable link shortcut for your week.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="bookmark-title">Label</Label>
+              <Input
+                id="bookmark-title"
+                autoFocus
+                value={bookmarkDraft.title}
+                onChange={(e) => setBookmarkDraft((prev) => ({ ...prev, title: e.target.value }))}
+                placeholder="Docs"
+              />
+            </div>
+            <div>
+              <Label htmlFor="bookmark-url">URL</Label>
+              <Input
+                id="bookmark-url"
+                value={bookmarkDraft.url}
+                onChange={(e) => setBookmarkDraft((prev) => ({ ...prev, url: e.target.value }))}
+                placeholder="example.com"
+              />
+            </div>
+            <div>
+              <Label>Color</Label>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {COLORS.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => setBookmarkDraft((prev) => ({ ...prev, color: c.value }))}
+                    className={`h-8 w-8 rounded-full bg-gradient-to-br ${c.value} ring-2 ring-offset-2 ring-offset-background transition ${bookmarkDraft.color === c.value ? "ring-slate-800 dark:ring-slate-100" : "ring-transparent"}`}
+                    aria-label={c.name}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="flex justify-between">
+            <div />
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setBookmarkEditorOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={addBookmark}>Save</Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={quickTaskEditorOpen} onOpenChange={setQuickTaskEditorOpen}>
         <DialogContent>
           <DialogHeader>
